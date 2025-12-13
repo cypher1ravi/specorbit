@@ -1,0 +1,207 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+// User & Auth Management
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  passwordHash   String?   // Nullable for OAuth users
+  name           String?
+  githubId       String?   @unique
+  githubUsername String?
+  profileImage   String?
+  tier           String    @default("starter") // starter, pro, enterprise
+  
+  teams          TeamMember[]
+  ownedTeams     Team[]
+  createdSpecs   OpenAPISpec[]
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  @@map("users")
+}
+
+// Team Management (Multi-tenancy)
+model Team {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tier      String   @default("starter")
+  
+  members   TeamMember[]
+  projects  Project[]
+  apiKeys   ApiKey[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("member") // admin, editor, viewer
+
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+// Core Project/API Entities
+model Project {
+  id            String    @id @default(uuid())
+  teamId        String
+  team          Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name          String
+  slug          String
+  description   String?
+  githubRepoUrl String?
+  githubBranch  String    @default("main")
+  baseUrl       String?
+  language      String    @default("javascript") // javascript, python, etc.
+  
+  specs         OpenAPISpec[]
+  docs          Documentation[]
+  syncHistory   SyncHistory[]
+  drifts        DriftDetection[]
+  integrations  Integration[]
+  analytics     Analytics[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([teamId, slug])
+  @@map("projects")
+}
+
+// OpenAPI Specifications (The Core Asset)
+model OpenAPISpec {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version     String
+  specJson    Json     // Stores the full OpenAPI JSON object
+  
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  
+  isPublished Boolean  @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  docs        Documentation[]
+
+  @@map("openapi_specs")
+}
+
+// Generated Documentation
+model Documentation {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  specId      String
+  spec        OpenAPISpec @relation(fields: [specId], references: [id], onDelete: Cascade)
+  
+  htmlContent String   @db.Text
+  isLive      Boolean  @default(false)
+  
+  generatedAt DateTime @default(now())
+  publishedAt DateTime?
+
+  @@map("documentation")
+}
+
+// Operational History
+model SyncHistory {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status      String   // success, failure, pending
+  message     String?
+  durationMs  Int?
+  triggerType String   // manual, webhook, scheduled
+  
+  createdAt   DateTime @default(now())
+
+  @@map("sync_history")
+}
+
+model DriftDetection {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  endpointPath    String
+  method          String
+  discrepancyType String   // missing_endpoint, changed_response
+  specDefinition  Json?
+  actualResponse  Json?
+  severity        String   @default("warning")
+  resolved        Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+
+  @@map("drift_detections")
+}
+
+// Integrations & API Keys
+model Integration {
+  id            String   @id @default(uuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type          String   // github, slack
+  config        Json
+  isActive      Boolean  @default(true)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("integrations")
+}
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  teamId      String
+  team        Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name        String
+  keyHash     String    @unique
+  permissions Json?     // Array of permission strings
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  
+  createdAt   DateTime  @default(now())
+
+  @@map("api_keys")
+}
+
+model Analytics {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  eventType   String   // doc_view, test_request
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@map("analytics")
+}
