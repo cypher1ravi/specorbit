@@ -1,42 +1,58 @@
 import { Request, Response } from 'express';
-import crypto from 'crypto';
+import prisma from '../lib/prisma';
+import { GitHubService } from '../services/github.service';
+import { SpecService } from '../services/spec.service';
 import logger from '../utils/logger';
+
+const specService = new SpecService();
 
 export class WebhookController {
   
   static async handleGitHubEvent(req: Request, res: Response) {
     try {
       const eventType = req.headers['x-github-event'];
-      const signature = req.headers['x-hub-signature-256'] as string;
       const payload = req.body;
 
-      // 1. Basic Logging (We will add signature verification later)
-      logger.info(`Received GitHub Event: ${eventType}`);
-
       if (eventType === 'ping') {
-        return res.status(200).json({ message: 'Pong! Webhook is working.' });
+        return res.status(200).json({ message: 'Pong!' });
       }
 
       if (eventType === 'push') {
-        const repoName = payload.repository?.full_name;
-        const branch = payload.ref?.replace('refs/heads/', '');
-        const commitId = payload.head_commit?.id;
+        const repoName = payload.repository?.full_name; // e.g. "username/repo"
+        const branch = payload.ref?.replace('refs/heads/', ''); // e.g. "main"
 
-        logger.info(`🚀 Code pushed to ${repoName} on branch ${branch}`);
-        logger.info(`Commit: ${commitId}`);
+        logger.info(`🔔 Webhook received for ${repoName} (${branch})`);
 
-        // TODO: In the future, we will trigger a background job here:
-        // await Queue.add('sync-documentation', { repoName, branch, commitId });
+        // 1. Find Project linked to this Repo
+        const project = await prisma.project.findFirst({
+          where: { 
+            githubRepoUrl: repoName, // Match the field in DB
+            githubBranch: branch 
+          }
+        });
 
-        return res.status(200).json({ message: 'Sync triggered successfully' });
+        if (!project) {
+          logger.warn(`No project found for repo: ${repoName}`);
+          return res.status(200).json({ message: 'Project not monitored' });
+        }
+
+        // 2. Fetch Code from GitHub
+        logger.info(`Fetching source code for project: ${project.name}...`);
+        const code = await GitHubService.fetchSourceCode(repoName, branch);
+
+        // 3. Generate & Save Spec
+        logger.info('Parsing code and updating docs...');
+        const spec = await specService.generateAndSave(project.id, code, '1.0.2'); // Auto-increment version in future
+
+        logger.info(`✅ Documentation updated for ${project.name}`);
+        return res.status(200).json({ message: 'Documentation updated', specId: spec.id });
       }
 
-      // Ignore other events for now
-      return res.status(200).json({ message: `Event ${eventType} ignored` });
+      res.status(200).json({ message: 'Event ignored' });
 
     } catch (error: any) {
-      logger.error(`Webhook Error: ${error.message}`);
-      return res.status(500).json({ error: 'Internal Server Error' });
+      logger.error(`Webhook Processing Error: ${error.message}`);
+      res.status(500).json({ error: 'Internal Server Error' });
     }
   }
 }

@@ -17,19 +17,16 @@ router.get(
   '/github/callback',
   passport.authenticate('github', { session: false, failureRedirect: '/login' }),
   (req, res) => {
-    // req.user contains the { user, accessToken, refreshToken } from AuthService
     const data = req.user as any;
     
-    // In a real app, you redirect to frontend with tokens in URL parameters or a cookie
-    // For MVP testing, we just return JSON
-    res.json({
-      message: 'GitHub Login Successful',
-      tokens: {
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken
-      },
-      user: data.user
-    });
+    // ENCODE DATA FOR URL
+    const accessToken = data.accessToken;
+    const refreshToken = data.refreshToken;
+    const user = encodeURIComponent(JSON.stringify(data.user));
+
+    // REDIRECT TO FRONTEND
+    // Note: In production, use an environment variable for the frontend URL
+    res.redirect(`http://localhost:5173/auth/callback?accessToken=${accessToken}&refreshToken=${refreshToken}&user=${user}`);
   }
 );
 

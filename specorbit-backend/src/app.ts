@@ -6,6 +6,7 @@ import logger from './utils/logger';
 import passport from 'passport';
 import authRoutes from './routes/auth.routes';
 import webhookRoutes from './routes/webhook.routes';
+import apiRoutes from './routes/api.routes';
 
 // We will add routes here later
 // import router from './routes';
@@ -13,7 +14,12 @@ const app: Express = express();
 
 // Security Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173', // Allow your Frontend URL
+  credentials: true,               // Allow cookies/auth headers
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Parser Middleware
 app.use(json());
@@ -33,6 +39,7 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api', apiRoutes);
 
 // 404 Handler
 app.use((req, res) => {

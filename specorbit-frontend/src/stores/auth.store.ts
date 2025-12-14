@@ -1,0 +1,39 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  profileImage?: string;
+}
+
+interface AuthState {
+  user: User | null;
+  token: string | null;
+  login: (user: User, token: string) => void;
+  logout: () => void;
+  isAuthenticated: () => boolean;
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      token: null,
+
+      login: (user, token) => {
+        set({ user, token });
+        // Set default header for future requests
+        // api.defaults.headers.common['Authorization'] = `Bearer ${token}`; 
+      },
+
+      logout: () => set({ user: null, token: null }),
+
+      isAuthenticated: () => !!get().token,
+    }),
+    {
+      name: 'specorbit-auth', // Save to localStorage
+    }
+  )
+);
