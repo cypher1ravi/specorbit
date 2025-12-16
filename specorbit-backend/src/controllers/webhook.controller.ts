@@ -7,7 +7,7 @@ import logger from '../utils/logger';
 const specService = new SpecService();
 
 export class WebhookController {
-  
+
   static async handleGitHubEvent(req: Request, res: Response) {
     try {
       const eventType = req.headers['x-github-event'];
@@ -25,9 +25,9 @@ export class WebhookController {
 
         // 1. Find Project linked to this Repo
         const project = await prisma.project.findFirst({
-          where: { 
+          where: {
             githubRepoUrl: repoName, // Match the field in DB
-            githubBranch: branch 
+            githubBranch: branch
           }
         });
 
@@ -37,12 +37,21 @@ export class WebhookController {
         }
 
         // 2. Fetch Code from GitHub
-        logger.info(`Fetching source code for project: ${project.name}...`);
-        const code = await GitHubService.fetchSourceCode(repoName, branch);
+        logger.info(`Fetching ${project.entryPath} for project: ${project.name}...`);
+        const code = await GitHubService.fetchSourceCode(repoName, branch, project.entryPath);
 
         // 3. Generate & Save Spec
         logger.info('Parsing code and updating docs...');
-        const spec = await specService.generateAndSave(project.id, code, '1.0.2'); // Auto-increment version in future
+        const spec = await specService.generateAndSave(
+          project.id,
+          code,
+          '1.0.2',
+          {                              
+            repo: repoName,              
+            branch: branch,              
+            entryPath: project.entryPath 
+          }
+        );
 
         logger.info(`✅ Documentation updated for ${project.name}`);
         return res.status(200).json({ message: 'Documentation updated', specId: spec.id });

@@ -13,13 +13,16 @@ interface CreateProjectModalProps {
 export default function CreateProjectModal({ isOpen, onClose, teamId }: CreateProjectModalProps) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
+    const [baseUrl, setBaseUrl] = useState('');
     const [githubRepoUrl, setGithubRepoUrl] = useState('');
+    const [githubBranch, setGithubBranch] = useState('main');
+    const [entryPath, setEntryPath] = useState('');
     const { token } = useAuthStore();
     const queryClient = useQueryClient();
 
     // Mutation to create project
     const createMutation = useMutation({
-        mutationFn: async (data: { name: string; description: string; teamId: string }) => {
+        mutationFn: async (data: { name: string; description: string; teamId: string; baseUrl?: string; githubRepoUrl?: string; githubBranch: string; entryPath: string; }) => {
             return await api.post('/projects', data, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -29,6 +32,10 @@ export default function CreateProjectModal({ isOpen, onClose, teamId }: CreatePr
             onClose();
             setName('');
             setDescription('');
+            setBaseUrl('');
+            setGithubRepoUrl('');
+            setGithubBranch('main');
+            setEntryPath('');
         },
     });
 
@@ -36,7 +43,7 @@ export default function CreateProjectModal({ isOpen, onClose, teamId }: CreatePr
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        createMutation.mutate({ name, description, teamId });
+        createMutation.mutate({ name, description, teamId, baseUrl, githubRepoUrl, githubBranch, entryPath });
     };
 
     return (
@@ -79,6 +86,18 @@ export default function CreateProjectModal({ isOpen, onClose, teamId }: CreatePr
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Base URL <span className="text-gray-400 font-normal">(for Drift Detection)</span>
+                        </label>
+                        <input
+                            type="url"
+                            value={baseUrl}
+                            onChange={(e) => setBaseUrl(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                            placeholder="https://api.example.com"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
                             GitHub Repository <span className="text-gray-400 font-normal">(Optional)</span>
                         </label>
                         <div className="flex rounded-md shadow-sm">
@@ -96,6 +115,33 @@ export default function CreateProjectModal({ isOpen, onClose, teamId }: CreatePr
                         <p className="mt-1 text-xs text-gray-500">
                             We will listen for push events on this repository.
                         </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Default Branch
+                            </label>
+                            <input
+                                type="text"
+                                value={githubBranch}
+                                onChange={(e) => setGithubBranch(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm outline-none"
+                                placeholder="main"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Entry Path 
+                            </label>
+                            <input
+                                type="text"
+                                value={entryPath}
+                                onChange={(e) => setEntryPath(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm outline-none"
+                                placeholder="src/index.ts"
+                            />
+                        </div>
                     </div>
 
                     <div className="pt-2 flex justify-end gap-3">

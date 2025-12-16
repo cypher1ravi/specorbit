@@ -1,12 +1,16 @@
 import { Router } from 'express';
 import passport from 'passport'; 
 import { AuthController } from '../controllers/auth.controller';
+import { authMiddleware } from '../middlewares/auth.middleware';
 import '../config/passport'; 
 const router = Router();
 
 // Email/Password
 router.post('/register', AuthController.register);
 router.post('/login', AuthController.login);
+
+// Logout
+router.post('/logout', AuthController.logout);
 
 // GitHub OAuth
 // 1. Redirect to GitHub

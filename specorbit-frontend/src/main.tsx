@@ -4,12 +4,14 @@ import {
   RouterProvider, 
   createRouter, 
   createRoute, 
-  createRootRoute 
+  createRootRoute,
+  redirect
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 
 // --- Imports ---
+import { useAuthStore } from './stores/auth.store';
 import App from './App';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
@@ -31,7 +33,17 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: Login, // Default to Login for now
+  beforeLoad: ({ location }) => {
+    // If the user is authenticated, redirect them to the dashboard
+    if (useAuthStore.getState().isAuthenticated()) {
+      throw redirect({
+        to: '/dashboard',
+        search: location.search,
+        replace: true,
+      });
+    }
+  },
+  component: Login, 
 });
 
 const loginRoute = createRoute({
@@ -49,8 +61,21 @@ const callbackRoute = createRoute({
 // 3. Protected Dashboard Routes (Wrapped in DashboardLayout)
 const dashboardLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
-  id: 'dashboard-layout', // Unique ID for the wrapper
-  component: DashboardLayout, // Renders the Sidebar
+  id: 'dashboard-layout',
+  beforeLoad: ({ location }) => {
+    // If the user is not authenticated, redirect them to the login page
+    if (!useAuthStore.getState().isAuthenticated()) {
+      throw redirect({
+        to: '/login',
+        search: {
+          // Keep track of the page they were trying to visit
+          redirect: location.href,
+        },
+        replace: true,
+      });
+    }
+  },
+  component: DashboardLayout,
 });
 
 const dashboardIndexRoute = createRoute({

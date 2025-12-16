@@ -79,7 +79,8 @@ model Project {
   description   String?
   githubRepoUrl String?
   githubBranch  String    @default("main")
-  baseUrl       String?
+  entryPath     String
+  baseUrl       String?   @default("src/app.ts")
   language      String    @default("javascript") // javascript, python, etc.
   
   specs         OpenAPISpec[]

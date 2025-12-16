@@ -61,4 +61,11 @@ export class AuthController {
       res.status(401).json({ error: 'Invalid credentials' });
     }
   }
+
+  static async logout(req: Request, res: Response) {
+    // In a stateful session, you would invalidate the session here.
+    // For JWT, the client is responsible for destroying the token.
+    // If using refresh tokens, you would invalidate it in the database here.
+    res.status(200).json({ message: 'Logged out successfully' });
+  }
 }

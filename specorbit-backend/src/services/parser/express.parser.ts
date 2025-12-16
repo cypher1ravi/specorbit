@@ -1,155 +1,270 @@
 import { Project, SyntaxKind, CallExpression, Node } from 'ts-morph';
 import logger from '../../utils/logger';
+import * as path from 'path';
+import * as fs from 'fs';
 
 export interface ParsedRoute {
   method: string;
   path: string;
   sourceFile: string;
   description?: string;
-  parameters: {
-    name: string;
-    in: 'path' | 'query' | 'body' | 'header';
-    required: boolean;
-  }[];
-  responses: {
-    status: number;
-    description?: string;
-  }[];
+  parameters: any[];
+  responses: any[];
+}
+
+export interface RouterMount {
+  path: string;
+  variableName: string;
+}
+
+export interface ImportInfo {
+  variableName: string;
+  filePath: string;
+}
+
+interface ParsedFileResult {
+  routes: ParsedRoute[];
+  mounts: RouterMount[];
+  imports: ImportInfo[];
 }
 
 export class ExpressParser {
   private project: Project;
+  private parsedFiles: Set<string> = new Set(); // Track parsed files to avoid circular imports
+  private fileCache: Map<string, ParsedFileResult> = new Map();
 
   constructor() {
-    this.project = new Project({
+    this.project = new Project({ 
       useInMemoryFileSystem: true,
+      compilerOptions: { allowJs: true } 
     });
   }
 
-  parseCode(code: string, fileName: string = 'dummy.ts'): ParsedRoute[] {
-    try {
-      const sourceFile = this.project.createSourceFile(fileName, code, { overwrite: true });
-      const routes: ParsedRoute[] = [];
-      const callExpressions = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression);
+  /**
+   * Main entry point - parses a file and recursively follows route imports
+   */
+  parseFile(filePath: string, baseDir: string): ParsedRoute[] {
+    this.parsedFiles.clear(); // Reset for new parsing session
+    this.fileCache.clear(); // Clear cache for new session
+    const allRoutes: ParsedRoute[] = [];
+    
+    this._parseFileRecursive(filePath, baseDir, '', allRoutes);
+    
+    return allRoutes;
+  }
 
-      for (const callExpr of callExpressions) {
-        if (this.isExpressRoute(callExpr)) {
-          const route = this.extractRouteInfo(callExpr, fileName);
-          if (route) {
-            routes.push(route);
-          }
-        }
+  /**
+   * Recursive helper that follows imports and combines mount paths
+   */
+  private _parseFileRecursive(
+    filePath: string, 
+    baseDir: string, 
+    mountPrefix: string, 
+    allRoutes: ParsedRoute[]
+  ): void {
+    const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
+
+    if (this.parsedFiles.has(relativePath)) {
+      logger.info(`   ⏭️  Skipping already parsed: ${relativePath}`);
+      return;
+    }
+    this.parsedFiles.add(relativePath);
+
+    let code: string;
+    try {
+      code = fs.readFileSync(filePath, 'utf-8');
+    } catch (e: any) {
+      logger.error(`   ❌ Could not read file: ${filePath}`);
+      return;
+    }
+
+    const { routes, mounts, imports } = this.parseCode(code, relativePath);
+
+    for (const route of routes) {
+      allRoutes.push({
+        ...route,
+        path: this.combinePaths(mountPrefix, route.path)
+      });
+    }
+
+    for (const mount of mounts) {
+      const importInfo = imports.find(imp => imp.variableName === mount.variableName);
+      
+      if (!importInfo) {
+        logger.warn(`   ⚠️  Could not find import for: ${mount.variableName}`);
+        continue;
       }
 
-      return routes;
-    } catch (error: any) {
-      logger.error(`Parsing error in ${fileName}: ${error.message}`);
-      return [];
+      const resolvedPath = this.resolveImportPath(importInfo.filePath, filePath, baseDir);
+      
+      if (!resolvedPath) {
+        logger.warn(`   ⚠️  Could not resolve path: ${importInfo.filePath}`);
+        continue;
+      }
+
+      logger.info(`   🔄 Following mount: ${mount.path} -> ${resolvedPath}`);
+      
+      const newMountPrefix = this.combinePaths(mountPrefix, mount.path);
+      this._parseFileRecursive(resolvedPath, baseDir, newMountPrefix, allRoutes);
     }
   }
 
-  private isExpressRoute(callExpr: CallExpression): boolean {
-    const propertyAccess = callExpr.getExpression();
-    if (!propertyAccess.isKind(SyntaxKind.PropertyAccessExpression)) return false;
+  /**
+   * Original parseCode method - now only parses a single file's structure
+   */
+  parseCode(code: string, fileName: string = 'file.ts', options?: { silent: boolean }): ParsedFileResult {
+    const normalizedFileName = fileName.replace(/\\/g, '/');
+    if (this.fileCache.has(normalizedFileName)) {
+      if (!options?.silent) {
+        logger.info(`   [CACHE] Using cached results for ${normalizedFileName}`);
+      }
+      return this.fileCache.get(normalizedFileName)!;
+    }
 
-    const methodName = propertyAccess.getName();
-    const allowedMethods = ['get', 'post', 'put', 'delete', 'patch'];
-    if (!allowedMethods.includes(methodName)) return false;
-
-    const args = callExpr.getArguments();
-    if (args.length < 2) return false;
-
-    return true;
-  }
-
-  private extractRouteInfo(callExpr: CallExpression, fileName: string): ParsedRoute | null {
     try {
-      const propertyAccess = callExpr.getExpression();
-      // @ts-ignore
-      const method = propertyAccess.getName().toUpperCase();
+      if (!options?.silent) {
+        logger.info(`   [PARSE] Parsing ${normalizedFileName}...`);
+      }
+      const sourceFile = this.project.createSourceFile(normalizedFileName, code, { overwrite: true });
       
-      const args = callExpr.getArguments();
-      const pathArg = args[0];
-      let path = pathArg.getText().replace(/^['"`]|['"`]$/g, '');
+      const routes: ParsedRoute[] = [];
+      const mounts: RouterMount[] = [];
+      const imports: ImportInfo[] = [];
 
-      // --- FIX START: Robust JSDoc Extraction ---
-      let description = '';
-      // Walk up the tree to find the statement (e.g., ExpressionStatement)
-      const stmt = callExpr.getAncestors().find(node => Node.isStatement(node));
+      // 1. EXTRACT IMPORTS
+      sourceFile.getImportDeclarations().forEach(decl => {
+        const path = decl.getModuleSpecifierValue();
+        
+        decl.getNamedImports().forEach(named => {
+          imports.push({ variableName: named.getName(), filePath: path });
+        });
+        
+        const def = decl.getDefaultImport();
+        if (def) {
+          imports.push({ variableName: def.getText(), filePath: path });
+        }
+      });
+
+      // 2. SCAN ALL FUNCTION CALLS
+      const calls = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression);
       
-      // @ts-ignore - Check if the found statement has JSDocs
-      if (stmt && typeof stmt.getJsDocs === 'function') {
-        // @ts-ignore
-        const docs = stmt.getJsDocs();
-        if (docs.length > 0) {
-          description = docs[0].getDescription().trim();
+      for (const call of calls) {
+        if (this.isCallTo(call, 'use')) {
+          const args = call.getArguments();
+          if (args.length >= 2) {
+             const pathArg = args[0];
+             if (Node.isStringLiteral(pathArg) || Node.isNoSubstitutionTemplateLiteral(pathArg)) {
+                const pathVal = pathArg.getText().replace(/^['"`]|['"`]$/g, '');
+                const routerVar = args[1].getText();
+                
+                if (!options?.silent) {
+                  logger.info(`   👉 Found Mount: "${pathVal}" -> loads "${routerVar}"`);
+                }
+                mounts.push({ path: pathVal, variableName: routerVar });
+             }
+          }
+        }
+
+        const methods = ['get', 'post', 'put', 'delete', 'patch'];
+        const expr = call.getExpression();
+        
+        if (Node.isPropertyAccessExpression(expr) && methods.includes(expr.getName())) {
+           if (call.getArguments().length >= 2) {
+              const route = this.extractRouteInfo(call, normalizedFileName);
+              if (route) {
+                if (!options?.silent) {
+                  logger.info(`   👉 Found Route: ${route.method} ${route.path}`);
+                }
+                routes.push(route);
+              }
+           }
         }
       }
-      // --- FIX END ---
+      
+      const result = { routes, mounts, imports };
+      this.fileCache.set(normalizedFileName, result);
 
-      // 2. Extract Handler Function details
-      const handlerFn = args[args.length - 1];
-      const parameters: any[] = [];
-      const responses: any[] = [];
+      return result;
 
-      const arrowFn = handlerFn.asKind(SyntaxKind.ArrowFunction);
-      const funcExpr = handlerFn.asKind(SyntaxKind.FunctionExpression);
-      const fn = arrowFn || funcExpr;
+    } catch (e: any) {
+      logger.error(`Parser crashed on ${fileName}: ${e.message}`);
+      return { routes: [], mounts: [], imports: [] };
+    }
+  }
 
-      if (fn) {
-        const params = fn.getParameters();
-        const reqName = params[0]?.getName(); 
-        const resName = params[1]?.getName(); 
+  /**
+   * Resolves an import path to an actual file path
+   */
+  private resolveImportPath(importPath: string, currentFile: string, baseDir: string): string | null {
+    // Skip node_modules imports
+    if (!importPath.startsWith('.')) {
+      return null;
+    }
 
-        fn.getDescendants().forEach((node: Node) => {
-          // Find params: req.params.id
-          if (reqName && node.isKind(SyntaxKind.PropertyAccessExpression)) {
-            const text = node.getText();
-            if (text.startsWith(`${reqName}.params.`)) {
-              parameters.push({
-                name: text.split('.')[2],
-                in: 'path',
-                required: true
-              });
-            }
-            if (text.startsWith(`${reqName}.query.`)) {
-              parameters.push({
-                name: text.split('.')[2],
-                in: 'query',
-                required: false
-              });
-            }
-          }
+    const currentDir = path.dirname(currentFile);
+    let resolved = path.resolve(currentDir, importPath);
 
-          // Find responses: res.status(200)
-          if (resName && node.isKind(SyntaxKind.CallExpression)) {
-            const expr = node.getExpression();
-            if (expr.getText() === `${resName}.status`) {
-              const statusArg = node.getArguments()[0];
-              if (statusArg) {
-                responses.push({
-                  status: parseInt(statusArg.getText()),
-                  description: 'Generated response'
-                });
-              }
-            }
-          }
-        });
+    // Try common extensions
+    const extensions = ['.ts', '.js', '.tsx', '.jsx', '/index.ts', '/index.js'];
+    
+    for (const ext of extensions) {
+      const testPath = resolved + ext;
+      if (fs.existsSync(testPath)) {
+        return testPath;
       }
+    }
 
-      const uniqueParams = Array.from(new Set(parameters.map(p => JSON.stringify(p)))).map(s => JSON.parse(s));
+    // If already has extension
+    if (fs.existsSync(resolved)) {
+      return resolved;
+    }
+
+    return null;
+  }
+
+  /**
+   * Combines two URL paths correctly
+   */
+  private combinePaths(prefix: string, suffix: string): string {
+    // Remove trailing slash from prefix
+    const cleanPrefix = prefix.replace(/\/$/, '');
+    // Ensure suffix starts with /
+    const cleanSuffix = suffix.startsWith('/') ? suffix : '/' + suffix;
+    
+    return cleanPrefix + cleanSuffix;
+  }
+
+  private isCallTo(call: CallExpression, methodName: string): boolean {
+    const expr = call.getExpression();
+    return Node.isPropertyAccessExpression(expr) && expr.getName() === methodName;
+  }
+
+  private extractRouteInfo(call: CallExpression, fileName: string): ParsedRoute | null {
+    try {
+      const expr = call.getExpression();
+      if (!Node.isPropertyAccessExpression(expr)) return null;
+
+      const method = expr.getName().toUpperCase();
+      const args = call.getArguments();
+      const pathArg = args[0];
+      
+      const path = pathArg.getText().replace(/^['"`]|['"`]$/g, '');
 
       return {
         method,
         path,
         sourceFile: fileName,
-        description,
-        parameters: uniqueParams,
-        responses
+        description: 'Auto-detected endpoint',
+        parameters: [],
+        responses: [{ status: 200, description: 'Success' }]
       };
-    } catch (e: any) {
-      console.error("Extraction Error:", e.message);
+    } catch (e) {
       return null;
     }
   }
 }
+
+// Usage example:
+// const parser = new ExpressParser();
+// const routes = parser.parseFile('./src/app.ts', './src');
+// console.log(routes);

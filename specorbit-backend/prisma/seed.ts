@@ -32,7 +32,9 @@ async function main() {
       slug: 'demo-api-' + Date.now(),
       teamId: team.id,
       description: 'A test project for SpecOrbit',
-      language: 'javascript'
+      githubRepoUrl: 'cypher1ravi/specorbit',
+      entryPath: 'specorbit-backend/src/app.ts',
+      language: 'tyepscript'
     }
   });
 

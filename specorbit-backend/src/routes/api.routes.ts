@@ -1,14 +1,13 @@
 import { Router } from 'express';
 import { ProjectController } from '../controllers/project.controller';
 import { SpecController } from '../controllers/spec.controller';
-import authRoutes from './auth.routes';
-import webhookRoutes from './webhook.routes';
+import { authMiddleware } from '../middlewares/auth.middleware';
+import driftRoutes from './drift.routes';
 
 const router = Router();
 
-// --- Modules ---
-router.use('/auth', authRoutes);
-router.use('/webhooks', webhookRoutes);
+// Protect all routes in this file
+router.use(authMiddleware);
 
 // --- Projects ---
 router.get('/projects', ProjectController.list);
@@ -16,7 +15,11 @@ router.post('/projects', ProjectController.create);
 router.get('/projects/:id', ProjectController.getOne);
 
 // --- Specs ---
-router.post('/projects/:id/sync', SpecController.sync);
-router.get('/projects/:id/specs/latest', SpecController.getLatest);
+router.post('/projects/:projectId/sync', SpecController.sync);
+router.get('/projects/:projectId/specs', SpecController.listSpecs);
+router.get('/specs/:specId', SpecController.getSpec);
+
+// --- Drift ---
+router.use('/projects/:projectId/drift', driftRoutes);
 
 export default router;

@@ -10,19 +10,14 @@ import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 export default function ProjectDetails() {
   // 1. Get Project ID from URL
   const { projectId } = useParams({ strict: false });
-  const { token } = useAuthStore();
   const queryClient = useQueryClient();
-  const [isSyncing, setIsSyncing] = useState(false);
 
   // 2. Fetch Latest Spec
   const { data: spec, isLoading, error } = useQuery({
     queryKey: ['spec', projectId], 
     queryFn: async () => {
-      // Add a console log to see what ID is actually being requested
-      console.log('Fetching spec for:', projectId); 
-      const res = await api.get(`/projects/${projectId}/specs/latest`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // The auth header is now automatically added by the axios interceptor
+      const res = await api.get(`/projects/${projectId}/specs/latest`);
       return res.data;
     },
     retry: false, // Don't retry if 404 (Empty project)
@@ -33,46 +28,17 @@ export default function ProjectDetails() {
   // 3. Mutation: Trigger Manual Sync
   const syncMutation = useMutation({
     mutationFn: async () => {
-      // Hardcoded sample code to simulate a file push
-      const sampleCode = `
-        import express from 'express';
-        const app = express();
-        
-        /**
-         * Get System Status
-         * @description Returns the health status of the API service
-         */
-        app.get('/api/status', (req, res) => {
-          res.status(200).json({ status: 'active', timestamp: Date.now() });
-        });
-
-        /**
-         * Create New Order
-         */
-        app.post('/api/orders', (req, res) => {
-          res.status(201).json({ id: 12345 });
-        });
-      `;
-      
-      return await api.post(`/projects/${projectId}/sync`, { code: sampleCode }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // The auth header is now automatically added by the axios interceptor
+      return await api.post(`/projects/${projectId}/sync`, {});
     },
     onSuccess: () => {
       // Refresh the spec data
       queryClient.invalidateQueries({ queryKey: ['spec', projectId] });
-      setIsSyncing(false);
     },
     onError: () => {
-      setIsSyncing(false);
       alert('Failed to sync documentation');
     }
   });
-
-  const handleManualSync = () => {
-    setIsSyncing(true);
-    syncMutation.mutate();
-  };
 
   // 4. Loading State
   if (isLoading) {
@@ -95,12 +61,12 @@ export default function ProjectDetails() {
           This project has no API specs. You can push code or generate a sample now.
         </p>
         <button
-           onClick={handleManualSync}
-           disabled={isSyncing}
+           onClick={() => syncMutation.mutate()}
+           disabled={syncMutation.isPending}
            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
         >
-           <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
-           {isSyncing ? 'Generating...' : 'Generate Sample Docs'}
+           <RefreshCw size={16} className={syncMutation.isPending ? 'animate-spin' : ''} />
+           {syncMutation.isPending ? 'Generating...' : 'Generate Sample Docs'}
         </button>
       </div>
     );
@@ -122,12 +88,12 @@ export default function ProjectDetails() {
            {/* Actions */}
            <div className="flex items-center gap-3">
              <button
-               onClick={handleManualSync}
-               disabled={isSyncing}
+               onClick={() => syncMutation.mutate()}
+               disabled={syncMutation.isPending}
                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
              >
-               <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-               {isSyncing ? 'Syncing...' : 'Re-Sync'}
+               <RefreshCw size={14} className={syncMutation.isPending ? 'animate-spin' : ''} />
+               {syncMutation.isPending ? 'Syncing...' : 'Re-Sync'}
              </button>
              
              <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded border border-green-200">

@@ -7,6 +7,7 @@ import passport from 'passport';
 import authRoutes from './routes/auth.routes';
 import webhookRoutes from './routes/webhook.routes';
 import apiRoutes from './routes/api.routes';
+import { authMiddleware } from './middlewares/auth.middleware';
 
 // We will add routes here later
 // import router from './routes';
@@ -38,6 +39,8 @@ app.get('/health', (req, res) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
+
+app.use(authMiddleware)
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api', apiRoutes);
 

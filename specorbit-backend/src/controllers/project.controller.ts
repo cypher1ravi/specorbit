@@ -8,7 +8,10 @@ const createProjectSchema = z.object({
   name: z.string().min(1),
   teamId: z.string().uuid(),
   description: z.string().optional(),
-  githubRepoUrl: z.string().optional(), 
+  baseUrl: z.string().url().optional(),
+  githubRepoUrl: z.string().optional(),
+  githubBranch: z.string().optional(),
+  entryPath: z.string().optional(), 
   language: z.enum(['javascript', 'typescript']).default('javascript'),
 });
 
@@ -40,15 +43,17 @@ export class ProjectController {
       const slug = data.name.toLowerCase().replace(/ /g, '-') + '-' + Date.now();
 
       // 3. Save to Database
-      // MAPPING HAPPENS HERE: githubRepo -> githubRepoUrl
       const project = await prisma.project.create({
         data: {
           name: data.name,
           teamId: data.teamId,
           description: data.description,
           slug,
+          baseUrl: data.baseUrl,
           githubRepoUrl: data.githubRepoUrl, 
+          githubBranch: data.githubBranch || 'main',
           language: data.language,
+          entryPath: data.entryPath || 'src/app.ts',
         }
       });
 
