@@ -6,7 +6,6 @@ import logger from '../utils/logger';
 // 1. Validation Schema
 const createProjectSchema = z.object({
   name: z.string().min(1),
-  teamId: z.string().uuid(),
   description: z.string().optional(),
   baseUrl: z.string().url().optional(),
   githubRepoUrl: z.string().optional(),
@@ -15,12 +14,19 @@ const createProjectSchema = z.object({
   language: z.enum(['javascript', 'typescript']).default('javascript'),
 });
 
+const updateProjectSchema = createProjectSchema.partial();
+
 export class ProjectController {
   
   // GET /api/projects
   static async list(req: Request, res: Response) {
     try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
       const projects = await prisma.project.findMany({
+        where: { teamId: req.user.teamId },
         orderBy: { updatedAt: 'desc' },
         include: { 
           _count: { select: { specs: true } } 
@@ -36,6 +42,9 @@ export class ProjectController {
   // POST /api/projects
   static async create(req: Request, res: Response) {
     try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
       // 1. Validate Input
       const data = createProjectSchema.parse(req.body);
       
@@ -45,14 +54,10 @@ export class ProjectController {
       // 3. Save to Database
       const project = await prisma.project.create({
         data: {
-          name: data.name,
-          teamId: data.teamId,
-          description: data.description,
+          ...data,
+          teamId: req.user.teamId,
           slug,
-          baseUrl: data.baseUrl,
-          githubRepoUrl: data.githubRepoUrl, 
           githubBranch: data.githubBranch || 'main',
-          language: data.language,
           entryPath: data.entryPath || 'src/app.ts',
         }
       });
@@ -69,7 +74,7 @@ export class ProjectController {
     }
   }
 
-  // GET /api/projects/:id
+// GET /api/projects/:id
   static async getOne(req: Request, res: Response) {
     try {
       const project = await prisma.project.findUnique({
@@ -77,15 +82,51 @@ export class ProjectController {
         include: {
           specs: {
             orderBy: { createdAt: 'desc' },
-            take: 1 
+            take: 1
           }
         }
       });
 
-      if (!project) return res.status(404).json({ error: 'Project not found' });
+      if (!project || !req.user || project.teamId !== req.user.teamId) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      
       res.json(project);
     } catch (error) {
       res.status(500).json({ error: 'Server error' });
+    }
+  }
+
+  // PUT /api/projects/:id
+  static async update(req: Request, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const data = updateProjectSchema.parse(req.body);
+      const { id } = req.params;
+
+      const project = await prisma.project.findUnique({
+        where: { id },
+      });
+
+      if (!project || project.teamId !== req.user.teamId) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const updatedProject = await prisma.project.update({
+        where: { id },
+        data,
+      });
+
+      res.json(updatedProject);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      logger.error('Update Project Error:', error);
+      res.status(500).json({ error: 'Failed to update project' });
     }
   }
 }

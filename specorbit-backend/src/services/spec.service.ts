@@ -4,12 +4,11 @@ import logger from '../utils/logger';
 import path from 'path';
 import fs from 'fs';
 import { OpenAPIV3 } from 'openapi-types';
+import { OpenApiGenerator } from './parser/openapi.generator';
+import SwaggerParser from '@apidevtools/swagger-parser';
 import { GitHubService } from './github.service';
 
 export class SpecService {
-  static generateAndSave(id: string, entryCode: string, newVersion: string, arg3: { repo: string; branch: any; entryPath: string; }) {
-    throw new Error('Method not implemented.');
-  }
 
   async generateAndSave(
     projectId: string, 
@@ -17,13 +16,13 @@ export class SpecService {
     version: string, 
     repoContext?: { repo: string, branch: string, entryPath: string }
   ) {
-    
+    logger.info(`[SpecService] Starting spec generation for project: ${projectId}`);
     let allRoutes: any[] = [];
     const parser = new ExpressParser();
 
     // If we have GitHub context, use file-based recursive parsing
     if (repoContext) {
-      logger.info('🚀 Using recursive file-based parsing from GitHub...');
+      logger.info('[SpecService] 🚀 Using recursive file-based parsing from GitHub...');
       
       let tempDir: string | null = null;
       try {
@@ -33,9 +32,10 @@ export class SpecService {
         // Use the new parseFile method for recursive parsing from the entry point
         const entryFilePath = path.join(tempDir, repoContext.entryPath);
         allRoutes = parser.parseFile(entryFilePath, tempDir);
+        logger.info(`[SpecService] Recursive parsing found ${allRoutes.length} routes.`);
         
       } catch (error) {
-        logger.error('Failed to parse with file system:', error);
+        logger.error('[SpecService] Failed to parse with file system:', error);
         // Fallback to old method
         allRoutes = this.fallbackParsing(parser, entryCode);
       } finally {
@@ -47,28 +47,44 @@ export class SpecService {
       
     } else {
       // No repo context - parse only the entry code
-      logger.info('⚠️  No repo context, parsing entry file only...');
+      logger.info('[SpecService] ⚠️  No repo context, parsing entry file only...');
       const mainParse = parser.parseCode(entryCode, 'app.ts');
       allRoutes = mainParse.routes;
+      logger.info(`[SpecService] Single-file parsing found ${allRoutes.length} routes.`);
     }
 
-    // Generate OpenAPI JSON
+    // Generate OpenAPI JSON using the generator class
     const project = await prisma.project.findUnique({ where: { id: projectId } });
-    const specJson = this.generateOpenAPIJson(allRoutes, project?.name || 'API Docs');
+    const generator = new OpenApiGenerator();
+    const specJson = generator.generateSpec(allRoutes, project?.name || 'API Docs', version);
     
-    logger.info(`✅ Found ${allRoutes.length} total routes`);
+    logger.info(`[SpecService] ✅ Found ${allRoutes.length} total routes, generating spec...`);
+
+    // Validate the generated spec
+    try {
+      await SwaggerParser.validate(specJson as any);
+      logger.info('[SpecService] ✅ OpenAPI spec is valid.');
+    } catch (err: any) {
+      logger.error('[SpecService] ❌ OpenAPI spec validation failed:', err.message);
+      // Decide if you want to save invalid specs. For now, we'll save them.
+    }
 
     // Save to Database
-    const spec = await prisma.openAPISpec.create({
-      data: {
-        projectId,
-        version,
-        specJson: specJson as any,
-        isPublished: true
-      }
-    });
-
-    return spec;
+    try {
+      const spec = await prisma.openAPISpec.create({
+        data: {
+          projectId,
+          version,
+          specJson: specJson as any,
+          isPublished: true
+        }
+      });
+      logger.info(`[SpecService] ✅ Successfully saved spec ${spec.id} to the database.`);
+      return spec;
+    } catch (error) {
+      logger.error('[SpecService] ❌ Failed to save spec to the database:', error);
+      throw error; // Re-throw the error to be caught by the controller
+    }
   }
 
   /**

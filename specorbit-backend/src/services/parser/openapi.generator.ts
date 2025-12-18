@@ -38,8 +38,9 @@ export class OpenApiGenerator {
         parameters: route.parameters.map(p => ({
           name: p.name,
           in: p.in,
-          required: p.required,
-          schema: { type: 'string' } // Default to string for now
+          required: p.in === 'path' ? true : p.required,
+          description: p.description,
+          schema: { type: (p.type || 'string') as any } // Use parsed type
         })),
         responses: {}
       };

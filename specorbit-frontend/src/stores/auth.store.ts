@@ -11,8 +11,9 @@ interface User {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
-  setAuth: (user: User, token: string) => void;
+  accessToken: string | null;
+  refreshToken: string | null;
+  setAuth: (user: User, accessToken: string, refreshToken: string) => void;
   loginWithPassword: (email: string, password: string) => Promise<any>;
   register: (email: string, password: string, name?: string) => Promise<any>;
   logout: () => Promise<void>;
@@ -23,17 +24,19 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
-      token: null,
+      accessToken: null,
+      refreshToken: null,
 
-      setAuth: (user, token) => {
-        set({ user, token });
+      setAuth: (user, accessToken, refreshToken) => {
+        set({ user, accessToken, refreshToken });
         // The interceptor in api.ts will pick up the new token
       },
 
       loginWithPassword: async (email, password) => {
         const response = await api.post('/auth/login', { email, password });
         if (response.data && response.data.user && response.data.tokens) {
-          get().setAuth(response.data.user, response.data.tokens.accessToken);
+          const { user, tokens } = response.data;
+          get().setAuth(user, tokens.accessToken, tokens.refreshToken);
         }
         return response.data;
       },
@@ -41,7 +44,8 @@ export const useAuthStore = create<AuthState>()(
       register: async (email, password, name) => {
         const response = await api.post('/auth/register', { email, password, name });
         if (response.data && response.data.user && response.data.tokens) {
-          get().setAuth(response.data.user, response.data.tokens.accessToken);
+          const { user, tokens } = response.data;
+          get().setAuth(user, tokens.accessToken, tokens.refreshToken);
         }
         return response.data;
       },
@@ -49,16 +53,16 @@ export const useAuthStore = create<AuthState>()(
       logout: async () => {
         try {
           // No need to call a logout endpoint if using stateless JWTs
-          // await api.post('/auth/logout'); 
+          // await api.post('/auth/logout');
         } catch (error) {
           console.error('Logout failed', error);
         } finally {
           // Always clear local state
-          set({ user: null, token: null });
+          set({ user: null, accessToken: null, refreshToken: null });
         }
       },
 
-      isAuthenticated: () => !!get().token,
+      isAuthenticated: () => !!get().accessToken,
     }),
     {
       name: 'specorbit-auth', // Save to localStorage

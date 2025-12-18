@@ -13,7 +13,7 @@ export const api = axios.create({
 // Add a request interceptor to automatically add the auth token
 api.interceptors.request.use(
   (config) => {
-    const token = useAuthStore.getState().token;
+    const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

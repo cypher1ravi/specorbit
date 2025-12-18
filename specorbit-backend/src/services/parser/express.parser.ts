@@ -246,23 +246,91 @@ export class ExpressParser {
 
       const method = expr.getName().toUpperCase();
       const args = call.getArguments();
-      const pathArg = args[0];
+      if (args.length === 0) return null;
       
+      const pathArg = args[0];
       const path = pathArg.getText().replace(/^['"`]|['"`]$/g, '');
 
-      return {
-        method,
-        path,
-        sourceFile: fileName,
-        description: 'Auto-detected endpoint',
-        parameters: [],
-        responses: [{ status: 200, description: 'Success' }]
-      };
-    } catch (e) {
+      // Default values
+      let description = 'Auto-detected endpoint';
+      const parameters: any[] = [];
+      const responses: any[] = [{ status: 200, description: 'Success' }];
+
+      // Find the handler function (usually the last argument)
+      const handlerArg = args[args.length - 1];
+      const jsDocableNode = this._getJSDocableNode(handlerArg);
+      
+      if (jsDocableNode) {
+        const jsDocs = jsDocableNode.getJsDocs();
+        if (jsDocs.length > 0) {
+          const lastJsDoc = jsDocs[jsDocs.length - 1]; // Use the closest JSDoc
+          description = lastJsDoc.getComment()?.trim() || description;
+
+          // Parse tags
+          lastJsDoc.getTags().forEach(tag => {
+            const tagName = tag.getTagName();
+            const comment = tag.getComment()?.trim();
+
+            if (tagName === 'param' && comment) {
+              const paramMatch = comment.match(/\{(.*?)\}\s+(\w+)\s*-\s*(.*)/);
+              if (paramMatch) {
+                parameters.push({
+                  type: paramMatch[1],
+                  name: paramMatch[2],
+                  description: paramMatch[3],
+                  in: this.determineParamIn(path, paramMatch[2]),
+                });
+              }
+            } else if (tagName === 'returns' && comment) {
+               // Simple returns parsing, can be improved
+               responses[0].description = comment;
+            }
+          });
+        }
+      }
+
+      return { method, path, sourceFile: fileName, description, parameters, responses };
+    } catch (e: any) {
+      logger.error(`Error extracting route info from ${fileName}: ${e.message}`);
       return null;
     }
   }
+
+  private determineParamIn(path: string, paramName: string): 'path' | 'query' | 'body' {
+    if (path.includes(`:${paramName}`)) {
+      return 'path';
+    }
+    // This is a simplification. In reality, we'd need to inspect
+    // req.query, req.body, etc. to be sure. For now, assume query.
+    return 'query';
+  }
+
+  /**
+   * Tries to find the node that would have the JSDoc comment.
+   * This can be the function itself, or the variable it's assigned to.
+   */
+  private _getJSDocableNode(node: Node): (Node & { getJsDocs: () => any[] }) | null {
+    if (!node) return null;
+
+    if (Node.isArrowFunction(node) || Node.isFunctionExpression(node)) {
+      if (Node.isVariableDeclaration(node.getParent())) {
+        return node.getParent()?.getParent() as any;
+      }
+      return node as any;
+    }
+
+    if (Node.isIdentifier(node)) {
+      const definition = node.getDefinitionNodes()[0];
+      if (definition && (Node.isVariableDeclaration(definition) || Node.isFunctionDeclaration(definition))) {
+        return definition.getParent() as any;
+      }
+      return definition as any;
+    }
+
+    return null;
+  }
 }
+
 
 // Usage example:
 // const parser = new ExpressParser();

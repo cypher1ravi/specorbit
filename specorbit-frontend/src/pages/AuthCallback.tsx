@@ -5,34 +5,31 @@ import { Loader2 } from 'lucide-react';
 
 export default function AuthCallback() {
   const navigate = useNavigate();
-  const { login } = useAuthStore();
+  const { setAuth } = useAuthStore();
 
   useEffect(() => {
-    // 1. Get URL parameters
     const params = new URLSearchParams(window.location.search);
     const accessToken = params.get('accessToken');
     const refreshToken = params.get('refreshToken');
     const userJson = params.get('user');
 
-    if (accessToken && userJson) {
+    if (accessToken && refreshToken && userJson) {
       try {
         const user = JSON.parse(decodeURIComponent(userJson));
         
-        // 2. Save to Zustand Store (and LocalStorage)
-        login(user, accessToken);
+        setAuth(user, accessToken, refreshToken);
         console.log('Login success:', user.email);
 
-        // 3. Redirect to Dashboard
         navigate({ to: '/dashboard' });
       } catch (e) {
-        console.error('Failed to parse user data', e);
+        console.error('Failed to parse user data or set auth', e);
         navigate({ to: '/login' });
       }
     } else {
-      // If no token, go back to login
+      console.error('Auth callback is missing required parameters.');
       navigate({ to: '/login' });
     }
-  }, [login, navigate]);
+  }, [setAuth, navigate]);
 
   return (
     <div className="h-screen flex flex-col items-center justify-center space-y-4">

@@ -111,7 +111,7 @@ export class SpecController {
   }
 
   // GET /api/specs/:specId
-  static async getSpec(req: Request, res: Response) {
+  static async  getSpec(req: Request, res: Response) {
     try {
       const { specId } = req.params;
       const spec = await prisma.openAPISpec.findUnique({

@@ -20,9 +20,9 @@ interface GitHubProfile {
 
 export class AuthService {
   // 1. Generate Access & Refresh Tokens
-  static generateTokens(userId: string): Tokens {
+  static generateTokens(userId: string,teamId:string): Tokens {
     const accessToken = jwt.sign(
-      { sub: userId },
+      { sub: userId,teamId },
       process.env.JWT_SECRET as string,
       { expiresIn: '15m' }
     );
@@ -34,6 +34,12 @@ export class AuthService {
     );
 
     return { accessToken, refreshToken };
+  }
+
+  // Helper to exclude password hash
+  private static omitPassword(user: any) {
+    const { passwordHash, ...userWithoutPassword } = user;
+    return userWithoutPassword;
   }
 
   // 2. Register New User
@@ -53,7 +59,7 @@ export class AuthService {
       },
     });
 
-    return { user, ...this.generateTokens(user.id) };
+    return { user: this.omitPassword(user), ...this.generateTokens(user.id) };
   }
 
   // 3. Login User
@@ -68,22 +74,19 @@ export class AuthService {
       throw new Error('Invalid credentials');
     }
 
-    return { user, ...this.generateTokens(user.id) };
+    return { user: this.omitPassword(user), ...this.generateTokens(user.id) };
   }
   // 4. GitHub OAuth Login
   static async githubLogin(profile: GitHubProfile) {
-    const email = profile.emails?.[0]?.value;
-    
-    if (!email) {
-      throw new Error('GitHub account must have a public email');
-    }
+    // Use public email or generate a placeholder
+    const email = profile.emails?.[0]?.value || `${profile.id}@users.noreply.github.com`;
 
     // 1. Try finding by GitHub ID
     let user = await prisma.user.findUnique({ 
       where: { githubId: profile.id } 
     });
 
-    // 2. If not found, try finding by Email (link accounts)
+    // 2. If not found by githubId, try finding by Email to link accounts
     if (!user) {
       user = await prisma.user.findUnique({ 
         where: { email } 
@@ -100,7 +103,7 @@ export class AuthService {
           }
         });
       } else {
-        // 3. Create new user
+        // 3. Create new user if not found by email either
         user = await prisma.user.create({
           data: {
             email,
@@ -114,6 +117,6 @@ export class AuthService {
       }
     }
 
-    return { user, ...this.generateTokens(user.id) };
+    return { user: this.omitPassword(user), ...this.generateTokens(user.id) };
   }
 }
