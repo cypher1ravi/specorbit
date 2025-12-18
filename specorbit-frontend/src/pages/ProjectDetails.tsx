@@ -1,10 +1,8 @@
-import { useState } from 'react';
-import { useParams } from '@tanstack/react-router';
+import { useParams, Link } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import SwaggerUI from 'swagger-ui-react';
 import 'swagger-ui-react/swagger-ui.css';
 import { api } from '../lib/api';
-import { useAuthStore } from '../stores/auth.store';
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function ProjectDetails() {
@@ -95,6 +93,8 @@ export default function ProjectDetails() {
                <RefreshCw size={14} className={syncMutation.isPending ? 'animate-spin' : ''} />
                {syncMutation.isPending ? 'Syncing...' : 'Re-Sync'}
              </button>
+             
+             <Link to={`/projects/${projectId}/drift` as any} className="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded hover:bg-indigo-500">View Drift</Link>
              
              <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded border border-green-200">
                Live Spec

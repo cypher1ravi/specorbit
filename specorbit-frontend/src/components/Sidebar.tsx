@@ -1,5 +1,5 @@
-import { Link, useLocation } from '@tanstack/react-router';
-import { LayoutDashboard, Plus, Settings, LogOut, BookOpen } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import { LayoutDashboard, Settings, LogOut, BookOpen } from 'lucide-react';
 import { useAuthStore } from '../stores/auth.store';
 
 export default function Sidebar() {
@@ -20,6 +20,9 @@ export default function Sidebar() {
         <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Projects" />
         <NavItem to="/docs" icon={<BookOpen size={20} />} label="Documentation" />
         <NavItem to="/settings" icon={<Settings size={20} />} label="Settings" />
+        <li>
+          <Link to={`/projects/${currentProject?.id}/drift`} className="sidebar-link">Drift</Link>
+        </li>
       </nav>
 
       {/* Footer Actions */}

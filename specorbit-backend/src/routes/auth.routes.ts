@@ -22,16 +22,27 @@ router.get(
   passport.authenticate('github', { session: false, failureRedirect: '/login' }),
   (req, res) => {
     const data = req.user as any;
-    
-    // ENCODE DATA FOR URL
-    const accessToken = data.accessToken;
-    const refreshToken = data.refreshToken;
-    const user = encodeURIComponent(JSON.stringify(data.user));
 
-    // REDIRECT TO FRONTEND
-    // Note: In production, use an environment variable for the frontend URL
-    res.redirect(`http://localhost:5173/auth/callback?accessToken=${accessToken}&refreshToken=${refreshToken}&user=${user}`);
+    // Set refresh token cookie and redirect to frontend callback page. Frontend will call /auth/refresh to obtain access token and user.
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/api'
+    };
+
+    res.cookie('refreshToken', data.refreshToken, cookieOptions);
+
+    // Redirect to frontend callback (no tokens in URL)
+    res.redirect(process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/auth/callback` : 'http://localhost:5173/auth/callback');
   }
 );
+
+// Refresh token endpoint
+router.post('/refresh', AuthController.refresh);
+// Logout
+router.post('/logout', AuthController.logout);
+// (old routes kept)
 
 export default router;

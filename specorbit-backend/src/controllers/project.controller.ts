@@ -6,7 +6,7 @@ import logger from '../utils/logger';
 // 1. Validation Schema
 const createProjectSchema = z.object({
   name: z.string().min(1),
-  teamId: z.string().uuid(),
+
   description: z.string().optional(),
   baseUrl: z.string().url().optional(),
   githubRepoUrl: z.string().optional(),
@@ -42,11 +42,17 @@ export class ProjectController {
       // 2. Generate Slug
       const slug = data.name.toLowerCase().replace(/ /g, '-') + '-' + Date.now();
 
-      // 3. Save to Database
+      // 3. Determine teamId: prefer body, fall back to authenticated user's team
+      const teamId = data.teamId || req.user?.teamId;
+      if (!teamId) {
+        return res.status(400).json({ error: 'teamId is required in body or user must belong to a team' });
+      }
+
+      // 4. Save to Database
       const project = await prisma.project.create({
         data: {
           name: data.name,
-          teamId: data.teamId,
+          teamId,
           description: data.description,
           slug,
           baseUrl: data.baseUrl,

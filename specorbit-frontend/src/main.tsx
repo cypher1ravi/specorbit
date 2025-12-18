@@ -18,6 +18,7 @@ import AuthCallback from './pages/AuthCallback';
 import DashboardLayout from './layouts/DashboardLayout';
 import Dashboard from './pages/Dashboard';
 import ProjectDetails from './pages/ProjectDetails';
+import DriftPage from './pages/DriftPage';
 
 // --- Setup Query Client ---
 const queryClient = new QueryClient();
@@ -90,6 +91,20 @@ const projectDetailsRoute = createRoute({
   component: ProjectDetails,
 });
 
+const driftRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/projects/$projectId/drift',
+  component: DriftPage,
+});
+
+const docsRoute = createRoute({
+  getParentRoute: () => dashboardLayoutRoute,
+  path: '/docs',
+  component: () => import('./pages/Docs').then(m => m.default),
+});
+
+// Add to children below
+
 // --- Build Router Tree ---
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -97,7 +112,9 @@ const routeTree = rootRoute.addChildren([
   callbackRoute,
   dashboardLayoutRoute.addChildren([
     dashboardIndexRoute,
-    projectDetailsRoute
+    projectDetailsRoute,
+    driftRoute,
+    docsRoute
   ]),
 ]);
 

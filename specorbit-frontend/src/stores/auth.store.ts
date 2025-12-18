@@ -15,6 +15,7 @@ interface AuthState {
   setAuth: (user: User, token: string) => void;
   loginWithPassword: (email: string, password: string) => Promise<any>;
   register: (email: string, password: string, name?: string) => Promise<any>;
+  refresh: () => Promise<any>;
   logout: () => Promise<void>;
   isAuthenticated: () => boolean;
 }
@@ -32,24 +33,31 @@ export const useAuthStore = create<AuthState>()(
 
       loginWithPassword: async (email, password) => {
         const response = await api.post('/auth/login', { email, password });
-        if (response.data && response.data.user && response.data.tokens) {
-          get().setAuth(response.data.user, response.data.tokens.accessToken);
+        if (response.data && response.data.user && response.data.accessToken) {
+          get().setAuth(response.data.user, response.data.accessToken);
         }
         return response.data;
       },
 
       register: async (email, password, name) => {
         const response = await api.post('/auth/register', { email, password, name });
-        if (response.data && response.data.user && response.data.tokens) {
-          get().setAuth(response.data.user, response.data.tokens.accessToken);
+        if (response.data && response.data.user && response.data.accessToken) {
+          get().setAuth(response.data.user, response.data.accessToken);
+        }
+        return response.data;
+      },
+
+      refresh: async () => {
+        const response = await api.post('/auth/refresh');
+        if (response.data && response.data.user && response.data.accessToken) {
+          get().setAuth(response.data.user, response.data.accessToken);
         }
         return response.data;
       },
 
       logout: async () => {
         try {
-          // No need to call a logout endpoint if using stateless JWTs
-          // await api.post('/auth/logout'); 
+          await api.post('/auth/logout');
         } catch (error) {
           console.error('Logout failed', error);
         } finally {

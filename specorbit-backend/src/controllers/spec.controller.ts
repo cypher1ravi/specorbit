@@ -90,6 +90,37 @@ export class SpecController {
     }
   }
 
+  // GET /api/docs (published specs across projects)
+  static async listPublished(req: Request, res: Response) {
+    try {
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(100, Number(req.query.limit) || 20);
+      const q = (req.query.q as string) || '';
+
+      const where: any = { isPublished: true };
+      if (q) {
+        where.OR = [
+          { version: { contains: q, mode: 'insensitive' } },
+          { project: { name: { contains: q, mode: 'insensitive' } } }
+        ];
+      }
+
+      const total = await prisma.openAPISpec.count({ where });
+      const items = await prisma.openAPISpec.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: { project: { select: { id: true, name: true, slug: true } } },
+        skip: (page - 1) * limit,
+        take: limit
+      });
+
+      res.json({ items, total, page, limit });
+    } catch (error) {
+      logger.error('Failed to list published specs', error);
+      res.status(500).json({ error: 'Failed to list published specs' });
+    }
+  }
+
   // GET /api/projects/:projectId/specs
   static async listSpecs(req: Request, res: Response) {
     try {

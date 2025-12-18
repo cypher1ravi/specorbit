@@ -14,16 +14,19 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
   const token = authHeader.split(' ')[1];
 
   try {
-    // 1. Verify Token
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; teamId: string; role: string };
+    // 1. Verify Token (must contain at least userId)
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
 
-    // 2. (Optional) Check if user still exists in DB
-    // This adds a DB call overhead but increases security
-    // const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
-    // if (!user) throw new Error('User not found');
+    // 2. Fetch primary team membership for the user (if any)
+    // This adds a DB call but ensures downstream code can rely on `req.user.teamId`
+    const membership = await prisma.teamMember.findFirst({ where: { userId: decoded.userId } });
 
-    // 3. Attach to Request
-    req.user = decoded;
+    // 3. Attach to Request (teamId/role may be undefined)
+    req.user = {
+      userId: decoded.userId,
+      teamId: membership?.teamId,
+      role: membership?.role,
+    };
 
     next();
   } catch (error) {
