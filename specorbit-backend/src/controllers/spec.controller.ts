@@ -11,11 +11,8 @@ export class SpecController {
   // POST /api/projects/:projectId/sync
   static async sync(req: Request, res: Response) {
     try {
-      const { projectId } = req.params;
+      const { projectId } = req.params;   
       
-      // Optional: Allow user to specify branch in body, otherwise default to 'main'
-      const branch = req.body.branch || 'main';
-
       // 1. Fetch Project Details
       const project = await prisma.project.findUnique({
         where: { id: projectId }
@@ -25,11 +22,11 @@ export class SpecController {
         return res.status(404).json({ error: 'Project not found' });
       }
 
-      if (!project.githubRepoUrl || !project.entryPath) {
+      if (!project.githubRepoUrl || !project.entryPath||!project.githubBranch) {
         return res.status(400).json({ error: 'Project missing GitHub configuration' });
       }
 
-      logger.info(`🔄 Manual sync triggered for ${project.name} on branch ${branch}`);
+      logger.info(`🔄 Manual sync triggered for ${project.name} on branch ${project?.githubBranch}`);
 
       // 2. Fetch the Entry File Code
       // We reuse the GitHubService to get the raw content of app.ts/index.ts
@@ -37,7 +34,7 @@ export class SpecController {
       try {
         entryCode = await GitHubService.fetchSourceCode(
           project.githubRepoUrl,
-          branch,
+          project.githubBranch,
           project.entryPath
         );
       } catch (err) {
@@ -55,7 +52,7 @@ export class SpecController {
         newVersion,
         {
           repo: project.githubRepoUrl,
-          branch: branch,
+          branch: project.githubBranch,
           entryPath: project.entryPath
         }
       );

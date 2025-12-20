@@ -28,6 +28,42 @@ api.interceptors.request.use(
 let isRefreshing = false as boolean;
 let failedQueue: Array<{ resolve: (token?: string) => void; reject: (err: any) => void }> = [];
 
+/** * API Endpoint Mappings 
+ */
+export const projectsApi = {
+  getOne: (id: string) => api.get(`/projects/${id}`),
+  sync: (id: string) => api.post(`/projects/${id}/sync`),
+};
+
+export const specsApi = {
+  getLatest: (projectId: string) => api.get(`/projects/${projectId}/specs/latest`),
+};
+
+
+
+export const driftApi = {
+  list: (projectId: string, params: any) => api.get(`/projects/${projectId}/drift`, { params }),
+  check: (projectId: string) => api.post(`/projects/${projectId}/drift/check`),
+  resolve: (projectId: string, driftId: string, resolved: boolean) => 
+    api.patch(`/projects/${projectId}/drift/${driftId}/resolve`, { resolved }),
+};
+
+/**
+ * Drift Detection API Calls
+ */
+
+// List drift detections for a project
+export const getProjectDrift = (projectId: string, params: any) =>
+  api.get(`/projects/${projectId}/drift`, { params });
+
+// Get details for a specific drift detection
+export const getDriftDetail = (projectId: string, detectionId: string) =>
+  api.get(`/projects/${projectId}/drift/${detectionId}`);
+
+// Mark a drift as resolved or unresolved
+export const resolveDrift = (projectId: string, detectionId: string, resolved: boolean) =>
+  api.patch(`/projects/${projectId}/drift/${detectionId}/resolve`, { resolved });
+
 const processQueue = (error: any, token: string | null = null) => {
   failedQueue.forEach((prom) => {
     if (error) prom.reject(error);

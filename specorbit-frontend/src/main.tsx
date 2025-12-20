@@ -1,138 +1,111 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import './index.css';
 import { 
-  RouterProvider, 
-  createRouter, 
+  createRootRoute, 
   createRoute, 
-  createRootRoute,
-  redirect
+  createRouter, 
+  RouterProvider,
+  Outlet 
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import './index.css';
 
-// --- Imports ---
-import { useAuthStore } from './stores/auth.store';
-import App from './App';
-import Login from './pages/Login';
-import AuthCallback from './pages/AuthCallback';
+// --- Page Imports ---
 import DashboardLayout from './layouts/DashboardLayout';
 import Dashboard from './pages/Dashboard';
 import ProjectDetails from './pages/ProjectDetails';
+import Docs from './pages/Docs';
 import DriftPage from './pages/DriftPage';
+import Login from './pages/Login';
+import TeamSettings from './pages/TeamSettings'; // New
+import ProfileSettings from './pages/ProfileSettings'; // New
 
-// --- Setup Query Client ---
 const queryClient = new QueryClient();
 
-// --- Define Routes ---
-
-// 1. Root Route (The main shell, uses App.tsx)
+// 1. Root Route
 const rootRoute = createRootRoute({
-  component: App,
+  component: () => <Outlet />,
 });
 
 // 2. Public Routes
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/',
-  beforeLoad: ({ location }) => {
-    // If the user is authenticated, redirect them to the dashboard
-    if (useAuthStore.getState().isAuthenticated()) {
-      throw redirect({
-        to: '/dashboard',
-        search: location.search,
-        replace: true,
-      });
-    }
-  },
-  component: Login, 
-});
-
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: Login,
 });
 
-const callbackRoute = createRoute({
+// 3. Authenticated Layout (Standardizes Sidebar/Layout)
+const layoutRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/auth/callback',
-  component: AuthCallback,
-});
-
-// 3. Protected Dashboard Routes (Wrapped in DashboardLayout)
-const dashboardLayoutRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  id: 'dashboard-layout',
-  beforeLoad: ({ location }) => {
-    // If the user is not authenticated, redirect them to the login page
-    if (!useAuthStore.getState().isAuthenticated()) {
-      throw redirect({
-        to: '/login',
-        search: {
-          // Keep track of the page they were trying to visit
-          redirect: location.href,
-        },
-        replace: true,
-      });
-    }
-  },
+  id: 'authenticated',
   component: DashboardLayout,
 });
 
-const dashboardIndexRoute = createRoute({
-  getParentRoute: () => dashboardLayoutRoute, // Child of the layout
+// 4. Dashboard Index
+const dashboardRoute = createRoute({
+  getParentRoute: () => layoutRoute,
   path: '/dashboard',
   component: Dashboard,
 });
 
+// 5. Project Specific Routes (Capture $projectId)
 const projectDetailsRoute = createRoute({
-  getParentRoute: () => dashboardLayoutRoute,
-  path: '/projects/$projectId', // $ tells Router this is a variable
+  getParentRoute: () => layoutRoute,
+  path: '/projects/$projectId',
   component: ProjectDetails,
 });
 
+const docsRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/docs/$projectId',
+  component: Docs,
+});
+
 const driftRoute = createRoute({
-  getParentRoute: () => dashboardLayoutRoute,
+  getParentRoute: () => layoutRoute,
   path: '/projects/$projectId/drift',
   component: DriftPage,
 });
 
-const docsRoute = createRoute({
-  getParentRoute: () => dashboardLayoutRoute,
-  path: '/docs',
-  component: () => import('./pages/Docs').then(m => m.default),
+// 6. Settings & Team Routes (NEW)
+const teamSettingsRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/settings/team',
+  component: TeamSettings,
 });
 
-// Add to children below
+const profileSettingsRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/settings/profile',
+  component: ProfileSettings,
+});
 
-// --- Build Router Tree ---
+// 7. Assemble Route Tree
 const routeTree = rootRoute.addChildren([
-  indexRoute,
   loginRoute,
-  callbackRoute,
-  dashboardLayoutRoute.addChildren([
-    dashboardIndexRoute,
+  layoutRoute.addChildren([
+    dashboardRoute,
     projectDetailsRoute,
+    docsRoute,
     driftRoute,
-    docsRoute
+    teamSettingsRoute,
+    profileSettingsRoute,
   ]),
 ]);
 
-// --- Create Router Instance ---
 const router = createRouter({ routeTree });
 
-// --- Type Safety for Router ---
+// Register for Type Safety
 declare module '@tanstack/react-router' {
   interface Register {
     router: typeof router;
   }
 }
 
-// --- Render Application ---
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>
-  </React.StrictMode>,
+  </React.StrictMode>
 );

@@ -54,4 +54,39 @@ export class DriftController {
       res.status(500).json({ error: 'Failed to retrieve drift detections' });
     }
   }
+  
+  /**
+   * GET /api/projects/:projectId/drift/:detectionId
+   * Retrieves a single drift detection record.
+   */
+  static async getOne(req: Request, res: Response) {
+    const { detectionId } = req.params;
+    try {
+      const detection = await prisma.driftDetection.findUnique({
+        where: { id: detectionId }
+      });
+      if (!detection) return res.status(404).json({ error: 'Drift detection not found' });
+      res.json(detection);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to retrieve drift detail' });
+    }
+  }
+
+  /**
+   * PATCH /api/projects/:projectId/drift/:detectionId/resolve
+   * Updates the resolved status of a drift detection.
+   */
+  static async resolve(req: Request, res: Response) {
+    const { detectionId } = req.params;
+    const { resolved } = req.body;
+    try {
+      const updated = await prisma.driftDetection.update({
+        where: { id: detectionId },
+        data: { resolved: !!resolved }
+      });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to update drift status' });
+    }
+  }
 }
